@@ -12,38 +12,36 @@ const main = async () => {
   console.log("Browser launched");
   const page = await browser.newPage();
   await page.goto(url);
+  await page.click(".calendar__navigation--tomorrow");
+  await page.waitForSelector(".event__match--scheduled", { timeout: 30000 });
 
-  const urls = await page.evaluate(() => {
-    const matchesUrls = Array.from(
+  //matchesUrls
+  const matchesUrls = await page.evaluate(() => {
+    const urls = Array.from(
       document.querySelectorAll(".event__match--scheduled")
     ).map((match) => {
       const id = match.getAttribute("id").split("_")[2];
       return `https://www.flashscore.pl/mecz/${id}/#/szczegoly-meczu`;
     });
-    return matchesUrls;
+    return urls;
   });
 
-  console.log("urls", urls);
-  await page.goto(urls[0]);
-  //await page.goto("https://www.flashscore.pl/mecz/faNRIvBF/#/szczegoly-meczu");
-  await page.click("#onetrust-accept-btn-handler");
+  await page.click("#onetrust-accept-btn-handler"); //cookie accept
+  await page.goto(matchesUrls[0]);
 
-  const teamsData = await page.evaluate(() => {
+  const rootData = await page.evaluate(() => {
     const participants = Array.from(
       document.querySelectorAll(".participant__participantName > a")
     ).map((participant) => participant?.innerHTML);
 
     const oddsRow = Array.from(document.querySelectorAll(".oddsValueInner"));
 
-    let rankDiv = Array.from(
+    const atpRankings = Array.from(
       document.querySelectorAll(".participant__participantRank")
     );
-
-    let fTextContent = rankDiv[0].textContent;
-    let sTextContent = rankDiv[1].textContent;
-
-    let fNumber = fTextContent.match(/\d+/)[0];
-    let sNumber = sTextContent.match(/\d+/)[0];
+    const [fNumber, sNumber] = atpRankings.map(
+      (rank) => rank.textContent.match(/\d+/)[0]
+    );
 
     return {
       participants,
@@ -52,24 +50,24 @@ const main = async () => {
     };
   });
 
-  const page2 = await browser.newPage();
+  //h2h
+  const h2hUrl = matchesUrls[0].replace("szczegoly-meczu", "h2h/overall");
 
-  const transformedUrl = urls[0].replace("szczegoly-meczu", "h2h/overall");
+  await page.goto(h2hUrl);
+  await page.waitForSelector(".h2h__row", { timeout: 30000 });
 
-  await page2.goto(transformedUrl);
+  const matchResultBoolean = await page.evaluate(() => {
+    //utils do switchowania wynikow setow
+    const result = document.querySelector(".h2h__icon")?.textContent;
+    return result === "L" ? 0 : 1;
+  });
 
-  const h2hRowsCount = await page2.evaluate(() => {
+  const h2hRowsCount = await page.evaluate(() => {
     const h2hRows = Array.from(document.querySelectorAll(".h2h__row"));
     return h2hRows.length;
   });
-  console.log("h2hRows", h2hRowsCount);
 
-  const matchResultZP = await page2.evaluate(() => {
-    const result = document.querySelector(".h2h__icon")?.textContent;
-    return result;
-  });
-  console.log("matchResult", matchResultZP);
-
+  //catch new window open
   let newPageResolve: (value: Page | PromiseLike<Page>) => void;
   const newPagePromise = new Promise<Page>((resolve) => {
     newPageResolve = resolve;
@@ -82,14 +80,16 @@ const main = async () => {
     }
   });
 
-  await page2.click(".h2h__row");
+  await page.click(".h2h__row");
 
-  // Get the new page
-  const newPage = await newPagePromise;
-  await newPage.waitForSelector(".smh__home.smh__part--1", { timeout: 30000 });
+  //last matches
+  const lastMatchPage = await newPagePromise;
+  await lastMatchPage.waitForSelector(".smh__home.smh__part--1", {
+    timeout: 30000,
+  });
 
-  const lastMatchData = await newPage.evaluate(
-    (teamsData, matchResultZP) => {
+  const lastMatchData = await lastMatchPage.evaluate(
+    (rootData, matchResultBoolean) => {
       const matchScore = document
         .querySelector(".detailScore__wrapper")
         ?.textContent.replace("-", ":");
@@ -98,23 +98,26 @@ const main = async () => {
         document.querySelectorAll(".participant__participantName > a")
       ).map((participant) => participant?.innerHTML);
       const opponentName = participants.filter(
-        (player) => player !== teamsData.participants[0]
+        (player) => player !== rootData.participants[0]
       )[0];
 
-      const rankDiv = Array.from(
+      const selfIndex = rootData.participants[0] === participants[0] ? 0 : 1;
+      const opponentIndex =
+        rootData.participants[0] === participants[0] ? 1 : 0;
+
+      const oddsRow = Array.from(document.querySelectorAll(".oddsValueInner"));
+      const selfOdds = oddsRow[selfIndex].textContent;
+      const opponentsOdds = oddsRow[opponentIndex].textContent;
+
+      const atpRankings = Array.from(
         document.querySelectorAll(".participant__participantRank")
       );
-
-      let fTextContent = rankDiv[0].textContent;
-      let sTextContent = rankDiv[1].textContent;
-
-      let fNumber = fTextContent.match(/\d+/)[0];
-      let sNumber = sTextContent.match(/\d+/)[0];
-
+      const [fNumber, sNumber] = atpRankings.map(
+        (rank) => rank.textContent.match(/\d+/)[0]
+      );
       const rankings = [fNumber, sNumber];
-
       const opponentAtpRanking = rankings.filter(
-        (rank) => rank !== teamsData.rankings[0]
+        (rank) => rank !== rootData.rankings[0]
       )[0];
 
       const set1Home = document.querySelector(".smh__home.smh__part--1")
@@ -123,9 +126,8 @@ const main = async () => {
         ?.textContent[0];
       const set1 = set1Home + ":" + set1Away;
 
-      const set2Home = document.querySelector(
-        ".smh__home.smh__part--2"
-      )?.textContent;
+      const set2Home = document.querySelector(".smh__home.smh__part--2")
+        ?.textContent[0];
       const set2Away = document.querySelector(".smh__away.smh__part--2")
         ?.textContent[0];
       const set2 = set2Home + ":" + set2Away;
@@ -147,12 +149,15 @@ const main = async () => {
         sets,
         opponentName,
         opponentAtpRanking,
+        selfOdds,
+        opponentsOdds,
+        win: matchResultBoolean,
       };
 
       return data;
     },
-    teamsData,
-    matchResultZP
+    rootData,
+    matchResultBoolean
   );
 
   console.log("lastMatchesData", lastMatchData);
@@ -164,14 +169,14 @@ const main = async () => {
 
   const match = {
     firstPlayer: {
-      name: teamsData.participants[0],
-      odds: teamsData.oddsRow[0],
-      atpRanking: teamsData.rankings[0],
+      name: rootData.participants[0],
+      odds: rootData.oddsRow[0],
+      atpRanking: rootData.rankings[0],
     },
     secondPlayer: {
-      name: teamsData.participants[1],
-      odds: teamsData.oddsRow[1],
-      atpRanking: teamsData.rankings[1],
+      name: rootData.participants[1],
+      odds: rootData.oddsRow[1],
+      atpRanking: rootData.rankings[1],
     },
   };
 
