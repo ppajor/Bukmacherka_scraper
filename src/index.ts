@@ -64,11 +64,12 @@ const main = async () => {
   });
   console.log("h2hRows", h2hRowsCount);
 
-  const matchResult = await page2.evaluate(() => {
+  const matchResultZP = await page2.evaluate(() => {
     const result = document.querySelector(".h2h__icon")?.textContent;
     return result;
   });
-  console.log("matchResult", matchResult);
+  console.log("matchResult", matchResultZP);
+
   let newPageResolve: (value: Page | PromiseLike<Page>) => void;
   const newPagePromise = new Promise<Page>((resolve) => {
     newPageResolve = resolve;
@@ -87,41 +88,79 @@ const main = async () => {
   const newPage = await newPagePromise;
   await newPage.waitForSelector(".smh__home.smh__part--1", { timeout: 30000 });
 
-  const setsResults = await newPage.evaluate(() => {
-    const set1Home = document.querySelector(
-      ".smh__home.smh__part--1"
-    )?.textContent;
-    const set1Away = document.querySelector(
-      ".smh__away.smh__part--1"
-    )?.textContent;
-    const set1 = set1Home + ":" + set1Away;
+  const lastMatchData = await newPage.evaluate(
+    (teamsData, matchResultZP) => {
+      const matchScore = document
+        .querySelector(".detailScore__wrapper")
+        ?.textContent.replace("-", ":");
 
-    const set2Home = document.querySelector(
-      ".smh__home.smh__part--1"
-    )?.textContent;
-    const set2Away = document.querySelector(
-      ".smh__away.smh__part--1"
-    )?.textContent;
-    const set2 = set2Home + ":" + set2Away;
+      const participants = Array.from(
+        document.querySelectorAll(".participant__participantName > a")
+      ).map((participant) => participant?.innerHTML);
+      const opponentName = participants.filter(
+        (player) => player !== teamsData.participants[0]
+      )[0];
 
-    const set3Home = document.querySelector(
-      ".smh__home.smh__part--1"
-    )?.textContent;
-    const set3Away = document.querySelector(
-      ".smh__away.smh__part--1"
-    )?.textContent;
-    const set3 = set3Home + ":" + set3Away;
+      const rankDiv = Array.from(
+        document.querySelectorAll(".participant__participantRank")
+      );
 
-    const sets = [set1, set2, set3];
-    return sets;
-  });
-  console.log("sets", setsResults);
+      let fTextContent = rankDiv[0].textContent;
+      let sTextContent = rankDiv[1].textContent;
 
-  //console.log("lastMatchesData", lastMatchesData);
+      let fNumber = fTextContent.match(/\d+/)[0];
+      let sNumber = sTextContent.match(/\d+/)[0];
 
-  const fLastMatches = {
-    result: matchResult,
-  };
+      const rankings = [fNumber, sNumber];
+
+      const opponentAtpRanking = rankings.filter(
+        (rank) => rank !== teamsData.rankings[0]
+      )[0];
+
+      const set1Home = document.querySelector(".smh__home.smh__part--1")
+        ?.textContent[0];
+      const set1Away = document.querySelector(".smh__away.smh__part--1")
+        ?.textContent[0];
+      const set1 = set1Home + ":" + set1Away;
+
+      const set2Home = document.querySelector(
+        ".smh__home.smh__part--2"
+      )?.textContent;
+      const set2Away = document.querySelector(".smh__away.smh__part--2")
+        ?.textContent[0];
+      const set2 = set2Home + ":" + set2Away;
+
+      const set3Home = document.querySelector(".smh__home.smh__part--3")
+        ?.textContent[0];
+      const set3Away = document.querySelector(".smh__away.smh__part--3")
+        ?.textContent[0];
+      let set3;
+      if (set3Home || set3Away) {
+        set3 = set3Home + ":" + set3Away;
+      } else {
+        set3 = null;
+      }
+      const sets = [set1, set2, set3].filter((set) => !!set);
+
+      const data = {
+        matchResult: matchScore,
+        sets,
+        opponentName,
+        opponentAtpRanking,
+      };
+
+      return data;
+    },
+    teamsData,
+    matchResultZP
+  );
+
+  console.log("lastMatchesData", lastMatchData);
+
+  // const fLastMatches = {
+  //   result: matchScoreValid,
+
+  // };
 
   const match = {
     firstPlayer: {
