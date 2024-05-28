@@ -12,7 +12,18 @@ const main = async () => {
   console.log("Browser launched");
   const page = await browser.newPage();
   await page.goto(url);
+  await page.waitForSelector(".calendar__navigation--tomorrow", {
+    timeout: 30000,
+  });
+  await page.click(".calendar__navigation--tomorrow"); //tommorow matches
+
+  await page.waitForSelector("#onetrust-accept-btn-handler", {
+    timeout: 15000,
+  });
+  await page.click("#onetrust-accept-btn-handler"); // Accept cookies
+
   await page.waitForSelector(".event__match--scheduled", { timeout: 30000 });
+  await page.waitForSelector(".tv-ico", { timeout: 30000 }); //hack - jesli nie ma klasy tv icon w danym dniu a jest w nastepnym
 
   // Get match URLs
   const matchesUrls = await page.evaluate(() => {
@@ -25,12 +36,9 @@ const main = async () => {
     return urls;
   });
 
-  await page.waitForSelector("#onetrust-accept-btn-handler", {
-    timeout: 15000,
-  });
-  await page.click("#onetrust-accept-btn-handler"); // Accept cookies
   console.log("matches length", matchesUrls.length);
   const allMatches = [];
+  const allSetsResults = [];
   for (const matchUrl of matchesUrls.slice(0, 20)) {
     //testowo niech wyscapuje 20 pierwszych
     try {
@@ -40,6 +48,7 @@ const main = async () => {
       await page.waitForSelector(".oddsValueInner", {
         timeout: 2500,
       });
+
       const rootData = await page.evaluate(() => {
         const participants = Array.from(
           document.querySelectorAll(".participant__participantNameWrapper")
@@ -56,13 +65,21 @@ const main = async () => {
           (rank) => rank?.textContent.match(/\d+/)[0]
         );
 
+        const oddsRowValues = oddsRow.map((odds) => odds?.textContent);
+        if (!oddsRowValues[0] || !oddsRowValues[1] || !fNumber || !sNumber)
+          return null;
+
         return {
           participants,
-          oddsRow: oddsRow.map((odds) => odds?.textContent),
+          oddsRow: oddsRowValues,
           rankings: [fNumber, sNumber],
         };
       });
 
+      if (!rootData) {
+        // if there is no crucial data, continue to next match
+        continue;
+      }
       // h2h
       const h2hUrl = matchUrl.replace("szczegoly-meczu", "h2h/overall");
 
@@ -100,19 +117,41 @@ const main = async () => {
             newPageResolve = resolve;
           });
 
-          const matchResultBoolean = await page.evaluate(
+          const matchRowData = await page.evaluate(
             (h2hRowIndex, sectionIdx) => {
               const result = document.querySelector(
                 `.h2h .h2h__section:nth-of-type(${sectionIdx}) .rows .h2h__row:nth-of-type(${
                   h2hRowIndex + 1
                 }) .h2h__icon`
               )?.textContent;
-              return result === "Z" ? 1 : 0;
+              const matchDate = document.querySelector(
+                `.h2h .h2h__section:nth-of-type(${sectionIdx}) .rows .h2h__row:nth-of-type(${
+                  h2hRowIndex + 1
+                }) .h2h__date`
+              )?.textContent;
+              const surface = document
+                .querySelector(
+                  `.h2h .h2h__section:nth-of-type(${sectionIdx}) .rows .h2h__row:nth-of-type(${
+                    h2hRowIndex + 1
+                  }) .surface`
+                )
+                ?.getAttribute("title");
+
+              const rowData = {
+                matchResultBoolean: result === "Z" ? 1 : 0,
+                matchDate,
+                matchSurface: surface,
+              };
+
+              return rowData;
             },
             h2hRowIndex,
             sectionIdx
           );
 
+          const { matchResultBoolean, matchDate, matchSurface } = matchRowData;
+
+          //h2h row click
           browser.on("targetcreated", async (target) => {
             if (target.type() === "page") {
               const newPage = await target.page();
@@ -146,10 +185,33 @@ const main = async () => {
           }
 
           const lastMatchData = await lastMatchPage.evaluate(
-            (rootData, matchResultBoolean) => {
+            (rootData, matchResultBoolean, matchDate, matchSurface) => {
+              const validMatchScores = ["0:2", "1:2", "2:1", "2:0"];
+              const validSetScores = [
+                "6:0",
+                "0:6",
+                "6:1",
+                "1:6",
+                "6:2",
+                "2:6",
+                "6:3",
+                "3:6",
+                "6:4",
+                "4:6",
+                "7:5",
+                "5:7",
+                "7:6",
+                "6:7",
+              ];
+
               const matchScore = document
                 .querySelector(".detailScore__wrapper")
                 ?.textContent.replace("-", ":");
+
+              if (!validMatchScores.includes(matchScore)) {
+                // if not valid score return null
+                return null;
+              }
 
               const participants = Array.from(
                 document.querySelectorAll(
@@ -207,8 +269,23 @@ const main = async () => {
               }
               const sets = [set1, set2, set3].filter((set) => !!set);
 
+              if (
+                //if there is no proper data or data not valid, don't add this match
+                !selfOdds ||
+                !opponentsOdds ||
+                !sets ||
+                sets.length === 0 ||
+                !validSetScores.includes(set1) ||
+                !validSetScores.includes(set2) ||
+                !validSetScores.includes(set3)
+              ) {
+                return null;
+              }
+
               const data = {
                 matchResult: matchScore,
+                matchDate,
+                matchSurface,
                 sets,
                 opponentName,
                 opponentAtpRanking,
@@ -217,18 +294,19 @@ const main = async () => {
                 win: matchResultBoolean,
               };
 
-              if (matchScore === ":") {
-                // no score, most likely surrender
-                return null;
-              }
-
               return data;
             },
             rootData,
-            matchResultBoolean
+            matchResultBoolean,
+            matchDate,
+            matchSurface
           );
 
+          if (lastMatchData?.sets) {
+            allSetsResults.push(...lastMatchData.sets);
+          }
           if (lastMatchData && sectionIdx === 1) {
+            //if lastMatch data returned null, it's not included in array
             lastMatchesFirstPlayer.push(lastMatchData);
           }
           if (lastMatchData && sectionIdx === 2) {
@@ -255,24 +333,39 @@ const main = async () => {
           lastMatches: lastMatchesSecondPlayer,
         },
       };
-      console.log("match", matchData);
+      //console.log("match", matchData);
       allMatches.push(matchData);
     } catch (error) {
       console.log("error", error);
     }
   }
-  console.log("all matches", allMatches);
+  //  console.log("all matches", allMatches);
   const productionObject = {
     matches: allMatches,
   };
-  const allMatchesJson = JSON.stringify(productionObject);
-  fs.writeFile("matches.json", allMatchesJson, "utf8", (err: any) => {
-    if (err) {
-      console.log("Error writing file", err);
-    } else {
-      console.log("File has been written");
-    }
-  });
+
+  if (allMatches.length >= 1) {
+    //write to file only if there are any results
+    const allMatchesJson = JSON.stringify(productionObject);
+
+    fs.writeFile("matches.json", allMatchesJson, "utf8", (err: any) => {
+      if (err) {
+        console.log("Error writing file", err);
+      } else {
+        console.log("File has been written");
+      }
+    });
+
+    const allSetsJson = JSON.stringify(allSetsResults);
+
+    fs.writeFile("sets.json", allSetsJson, "utf8", (err: any) => {
+      if (err) {
+        console.log("Error writing file", err);
+      } else {
+        console.log("File has been written");
+      }
+    });
+  }
   await browser.close();
 };
 
