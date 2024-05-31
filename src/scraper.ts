@@ -260,13 +260,11 @@ const main = async () => {
               const atpRankings = Array.from(
                 document.querySelectorAll(".participant__participantRank")
               );
-              const [fNumber, sNumber] = atpRankings.map(
+              const atpRankingsTextContent = atpRankings.map(
                 (rank) => rank?.textContent.match(/\d+/)[0]
               );
-              const rankings = [fNumber, sNumber];
-              const opponentAtpRanking = rankings.filter(
-                (rank) => rank !== rootData.rankings[0]
-              )[0];
+
+              const opponentAtpRanking = atpRankingsTextContent[opponentIndex];
 
               const set1Home = document.querySelector(".smh__home.smh__part--1")
                 ?.textContent[0];
