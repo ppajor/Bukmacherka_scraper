@@ -1,5 +1,8 @@
 /node_modules
 
 /dist
+
+/backup
+
 sets.json
 matches.json

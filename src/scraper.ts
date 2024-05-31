@@ -15,7 +15,10 @@ const main = async () => {
   await page.waitForSelector(".calendar__navigation--tomorrow", {
     timeout: 30000,
   });
+
+  /* HACK */
   await page.click(".calendar__navigation--tomorrow"); //tommorow matches
+  // await page.waitForSelector(".tv-ico", { timeout: 30000 }); //hack - jesli nie ma klasy tv icon w danym dniu a jest w nastepnym
 
   await page.waitForSelector("#onetrust-accept-btn-handler", {
     timeout: 15000,
@@ -23,7 +26,6 @@ const main = async () => {
   await page.click("#onetrust-accept-btn-handler"); // Accept cookies
 
   await page.waitForSelector(".event__match--scheduled", { timeout: 30000 });
-  await page.waitForSelector(".tv-ico", { timeout: 30000 }); //hack - jesli nie ma klasy tv icon w danym dniu a jest w nastepnym
 
   // Get match URLs
   const matchesUrls = await page.evaluate(() => {
@@ -39,7 +41,7 @@ const main = async () => {
   console.log("matches length", matchesUrls.length);
   const allMatches = [];
   const allSetsResults = [];
-  for (const matchUrl of matchesUrls.slice(0, 20)) {
+  for (const matchUrl of matchesUrls) {
     //testowo niech wyscapuje 20 pierwszych
     try {
       console.log("match url", matchUrl);
@@ -80,7 +82,8 @@ const main = async () => {
         // if there is no crucial data, continue to next match
         continue;
       }
-      // h2h
+
+      /* h2h */
       const h2hUrl = matchUrl.replace("szczegoly-meczu", "h2h/overall");
 
       await page.goto(h2hUrl);
@@ -89,6 +92,10 @@ const main = async () => {
         await page.waitForSelector(".showMore", { timeout: 2500 });
 
         await page.click(".h2h .h2h__section:nth-child(1) .showMore");
+        await page.click(".h2h .h2h__section:nth-child(1) .showMore");
+        await page.click(".h2h .h2h__section:nth-child(1) .showMore");
+        await page.click(".h2h .h2h__section:nth-child(2) .showMore");
+        await page.click(".h2h .h2h__section:nth-child(2) .showMore");
         await page.click(".h2h .h2h__section:nth-child(2) .showMore");
       } catch (error) {
         console.log("error", error);
@@ -185,8 +192,25 @@ const main = async () => {
           }
 
           const lastMatchData = await lastMatchPage.evaluate(
-            (rootData, matchResultBoolean, matchDate, matchSurface) => {
-              const validMatchScores = ["0:2", "1:2", "2:1", "2:0"];
+            (
+              rootData,
+              matchResultBoolean,
+              matchDate,
+              matchSurface,
+              sectionIdx
+            ) => {
+              const validMatchScores = [
+                "0:2",
+                "1:2",
+                "2:1",
+                "2:0",
+                "3:0",
+                "0:3",
+                "3:1",
+                "1:3",
+                "3:2",
+                "2:3",
+              ];
               const validSetScores = [
                 "6:0",
                 "0:6",
@@ -218,14 +242,13 @@ const main = async () => {
                   ".participant__participantNameWrapper"
                 )
               ).map((participant) => participant?.textContent);
-              const opponentName = participants.filter(
-                (player) => player !== rootData.participants[0]
-              )[0];
 
               const selfIndex =
-                rootData.participants[0] === participants[0] ? 0 : 1;
-              const opponentIndex =
-                rootData.participants[0] === participants[0] ? 1 : 0;
+                rootData.participants[sectionIdx - 1] === participants[0]
+                  ? 0
+                  : 1;
+              const opponentIndex = selfIndex === 0 ? 1 : 0;
+              const opponentName = participants[opponentIndex];
 
               const oddsRow = Array.from(
                 document.querySelectorAll(".oddsValueInner")
@@ -267,7 +290,32 @@ const main = async () => {
               } else {
                 set3 = null;
               }
-              const sets = [set1, set2, set3].filter((set) => !!set);
+
+              const set4Home = document.querySelector(".smh__home.smh__part--4")
+                ?.textContent[0];
+              const set4Away = document.querySelector(".smh__away.smh__part--4")
+                ?.textContent[0];
+              let set4;
+              if (set4Home || set4Away) {
+                set4 = set4Home + ":" + set4Away;
+              } else {
+                set4 = null;
+              }
+
+              const set5Home = document.querySelector(".smh__home.smh__part--5")
+                ?.textContent[0];
+              const set5Away = document.querySelector(".smh__away.smh__part--5")
+                ?.textContent[0];
+              let set5;
+              if (set5Home || set5Away) {
+                set5 = set5Home + ":" + set5Away;
+              } else {
+                set5 = null;
+              }
+
+              const sets = [set1, set2, set3, set4, set5].filter(
+                (set) => !!set
+              );
 
               if (
                 //if there is no proper data or data not valid, don't add this match
@@ -277,7 +325,9 @@ const main = async () => {
                 sets.length === 0 ||
                 !validSetScores.includes(set1) ||
                 !validSetScores.includes(set2) ||
-                !validSetScores.includes(set3)
+                (set3 && !validSetScores.includes(set3)) ||
+                (set4 && !validSetScores.includes(set4)) ||
+                (set5 && !validSetScores.includes(set5))
               ) {
                 return null;
               }
@@ -299,7 +349,8 @@ const main = async () => {
             rootData,
             matchResultBoolean,
             matchDate,
-            matchSurface
+            matchSurface,
+            sectionIdx
           );
 
           if (lastMatchData?.sets) {
