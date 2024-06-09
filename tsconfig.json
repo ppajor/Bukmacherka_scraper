@@ -4,9 +4,10 @@
     "outDir": "./dist",
     "sourceMap": true,
     "noImplicitAny": true,
-    "target": "es6",
+    "target": "ESNext",
     "module": "commonjs",
     "moduleResolution": "node",
-    "jsx": "react"
+    "jsx": "react",
+    "noEmitHelpers": false
   }
 }

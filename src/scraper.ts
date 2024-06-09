@@ -7,6 +7,24 @@ puppeteer.use(StealthPlugin());
 
 const url = "https://www.flashscore.pl/tenis";
 
+function daysFromDate(dateStr: string) {
+  // Parse the input date string
+  const [day, month, year] = dateStr.split(".").map(Number);
+  // Create a Date object for the input date
+  const inputDate: any = new Date(Number(`20${year}`), month - 1, day);
+
+  // Get today's date
+  const today: any = new Date();
+
+  // Calculate the difference in time (in milliseconds)
+  const timeDifference = today - inputDate;
+
+  // Convert the time difference from milliseconds to days
+  const daysDifference = Math.floor(timeDifference / (1000 * 60 * 60 * 24));
+
+  return daysDifference;
+}
+
 const main = async () => {
   const browser: Browser = await puppeteer.launch({ headless: false });
   console.log("Browser launched");
@@ -17,8 +35,8 @@ const main = async () => {
   });
 
   /* HACK */
-  await page.click(".calendar__navigation--tomorrow"); //tommorow matches
-  // await page.waitForSelector(".tv-ico", { timeout: 30000 }); //hack - jesli nie ma klasy tv icon w danym dniu a jest w nastepnym
+  //await page.click(".calendar__navigation--tomorrow"); //tommorow matches
+  //await page.waitForSelector(".tv-ico", { timeout: 30000 }); //hack - jesli nie ma klasy tv icon w danym dniu a jest w nastepnym
 
   await page.waitForSelector("#onetrust-accept-btn-handler", {
     timeout: 15000,
@@ -41,6 +59,8 @@ const main = async () => {
   console.log("matches length", matchesUrls.length);
   const allMatches = [];
   const allSetsResults = [];
+  await page.exposeFunction("dateCounter", daysFromDate);
+
   for (const matchUrl of matchesUrls) {
     //testowo niech wyscapuje 20 pierwszych
     try {
@@ -125,7 +145,7 @@ const main = async () => {
           });
 
           const matchRowData = await page.evaluate(
-            (h2hRowIndex, sectionIdx) => {
+            async (h2hRowIndex, sectionIdx) => {
               const result = document.querySelector(
                 `.h2h .h2h__section:nth-of-type(${sectionIdx}) .rows .h2h__row:nth-of-type(${
                   h2hRowIndex + 1
@@ -143,11 +163,14 @@ const main = async () => {
                   }) .surface`
                 )
                 ?.getAttribute("title");
+              //@ts-ignore
+              const isLatestMatch = await window?.dateCounter(matchDate);
 
               const rowData = {
                 matchResultBoolean: result === "Z" ? 1 : 0,
                 matchDate,
                 matchSurface: surface,
+                isInLast60Days: isLatestMatch < 60 ? true : false,
               };
 
               return rowData;
@@ -156,7 +179,16 @@ const main = async () => {
             sectionIdx
           );
 
-          const { matchResultBoolean, matchDate, matchSurface } = matchRowData;
+          const {
+            matchResultBoolean,
+            matchDate,
+            matchSurface,
+            isInLast60Days,
+          } = matchRowData;
+          console.log("isInLast60Days", isInLast60Days);
+          if (!isInLast60Days) {
+            continue;
+          }
 
           //h2h row click
           browser.on("targetcreated", async (target) => {
@@ -264,7 +296,10 @@ const main = async () => {
                 (rank) => rank?.textContent.match(/\d+/)[0]
               );
 
-              const opponentAtpRanking = atpRankingsTextContent[opponentIndex];
+              const opponentAtpRanking =
+                atpRankingsTextContent.length === 2
+                  ? atpRankingsTextContent[opponentIndex]
+                  : null;
 
               const set1Home = document.querySelector(".smh__home.smh__part--1")
                 ?.textContent[0];
@@ -319,6 +354,7 @@ const main = async () => {
                 //if there is no proper data or data not valid, don't add this match
                 !selfOdds ||
                 !opponentsOdds ||
+                !opponentAtpRanking ||
                 !sets ||
                 sets.length === 0 ||
                 !validSetScores.includes(set1) ||
