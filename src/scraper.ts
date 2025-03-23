@@ -35,7 +35,7 @@ const main = async () => {
   });
 
   /* HACK */
-  //await page.click(".calendar__navigation--tomorrow"); //tommorow matches
+  // await page.click(".calendar__navigation--tomorrow"); //tommorow matches
   //await page.waitForSelector(".tv-ico", { timeout: 30000 }); //hack - jesli nie ma klasy tv icon w danym dniu a jest w nastepnym
 
   await page.waitForSelector("#onetrust-accept-btn-handler", {
@@ -67,7 +67,7 @@ const main = async () => {
       console.log("match url", matchUrl);
       await page.goto(matchUrl);
 
-      await page.waitForSelector(".oddsValueInner", {
+      await page.waitForSelector(".wcl-oddsValue_mpszX", {
         timeout: 2500,
       });
 
@@ -77,7 +77,7 @@ const main = async () => {
         ).map((participant) => participant?.textContent);
 
         const oddsRow = Array.from(
-          document.querySelectorAll(".oddsValueInner")
+          document.querySelectorAll(".wcl-oddsValue_mpszX")
         );
 
         const atpRankings = Array.from(
@@ -216,7 +216,7 @@ const main = async () => {
               ".participant__participantNameWrapper",
               { timeout: 2500 }
             );
-            await lastMatchPage.waitForSelector(".oddsValueInner", {
+            await lastMatchPage.waitForSelector(".wcl-oddsValue_mpszX", {
               timeout: 2500,
             });
           } catch (error) {
@@ -283,7 +283,7 @@ const main = async () => {
               const opponentName = participants[opponentIndex];
 
               const oddsRow = Array.from(
-                document.querySelectorAll(".oddsValueInner")
+                document.querySelectorAll(".wcl-oddsValue_mpszX")
               );
 
               const selfOdds = oddsRow[selfIndex]?.textContent;
