@@ -1,6 +1,7 @@
 const puppeteer = require("puppeteer-extra");
 const StealthPlugin = require("puppeteer-extra-plugin-stealth");
 import { Browser, Page } from "puppeteer";
+import { Match, ResultMatch, ResultMatchData } from "./types";
 const fs = require("fs");
 
 puppeteer.use(StealthPlugin());
@@ -43,12 +44,17 @@ const main = async () => {
   });
   await page.click("#onetrust-accept-btn-handler"); // Accept cookies
 
-  await page.waitForSelector(".event__match--scheduled", { timeout: 30000 });
+  await page.waitForSelector(".calendar__navigation--yesterday", {
+    timeout: 30000,
+  });
+  await page.click(".calendar__navigation--yesterday");
+
+  await page.waitForSelector(`.event__match--withRowLink`, { timeout: 30000 });
 
   // Get match URLs
   const matchesUrls = await page.evaluate(() => {
     const urls = Array.from(
-      document.querySelectorAll(".event__match--scheduled")
+      document.querySelectorAll(`.event__match--withRowLink`)
     ).map((match) => {
       const id = match.getAttribute("id").split("_")[2];
       return `https://www.flashscore.pl/mecz/${id}/#/szczegoly-meczu`;
@@ -56,22 +62,21 @@ const main = async () => {
     return urls;
   });
 
-  console.log("matches length", matchesUrls.length);
-  const allMatches = [];
+  const allMatches: ResultMatch[] = [];
   const allSetsResults = [];
   await page.exposeFunction("dateCounter", daysFromDate);
 
+  //loop through all matches
   for (const matchUrl of matchesUrls) {
-    //testowo niech wyscapuje 20 pierwszych
     try {
-      console.log("match url", matchUrl);
       await page.goto(matchUrl);
 
       await page.waitForSelector(".wcl-oddsValue_mpszX", {
         timeout: 2500,
       });
 
-      const rootData = await page.evaluate(() => {
+      //get match data
+      const rootData: ResultMatchData = await page.evaluate(() => {
         const participants = Array.from(
           document.querySelectorAll(".participant__participantNameWrapper")
         ).map((participant) => participant?.textContent);
@@ -83,6 +88,28 @@ const main = async () => {
         const atpRankings = Array.from(
           document.querySelectorAll(".participant__participantRank")
         );
+
+        const matchDate = document.querySelector(
+          ".duelParticipant__startTime"
+        )?.textContent;
+
+        const matchScoreString = document
+          .querySelector(".detailScore__wrapper")
+          ?.textContent.replace("-", ":");
+
+        if (!matchScoreString) {
+          return null;
+        }
+
+        const resultNumbersArray = matchScoreString.split(":");
+        const matchWinner =
+          resultNumbersArray[0] > resultNumbersArray[1] ? 1 : 2;
+
+        const areBothWonSet =
+          Number(resultNumbersArray[0]) > 0 && Number(resultNumbersArray[1]) > 0
+            ? 1
+            : 0;
+
         const [fNumber, sNumber] = atpRankings.map(
           (rank) => rank?.textContent.match(/\d+/)[0]
         );
@@ -92,7 +119,10 @@ const main = async () => {
           return null;
 
         return {
+          matchDate,
           participants,
+          bothWonSet: areBothWonSet as 0 | 1,
+          matchWinner: matchWinner as 1 | 2,
           oddsRow: oddsRowValues,
           rankings: [fNumber, sNumber],
         };
@@ -125,6 +155,7 @@ const main = async () => {
       let lastMatchesFirstPlayer = [];
       let lastMatchesSecondPlayer = [];
 
+      //loop through h2h sections
       for (let sectionIdx = 1; sectionIdx <= 2; sectionIdx++) {
         const h2hRowsCount = await page.evaluate((sectionIdx) => {
           const h2hRows = Array.from(
@@ -135,12 +166,14 @@ const main = async () => {
           return h2hRows.length;
         }, sectionIdx);
 
+        //loop through h2h rows
         for (let h2hRowIndex = 0; h2hRowIndex < h2hRowsCount; h2hRowIndex++) {
           let newPageResolve: (value: Page | PromiseLike<Page>) => void;
           const newPagePromise = new Promise<Page>((resolve) => {
             newPageResolve = resolve;
           });
 
+          //get match row data
           const matchRowData = await page.evaluate(
             async (h2hRowIndex, sectionIdx) => {
               const result = document.querySelector(
@@ -399,10 +432,10 @@ const main = async () => {
         }
       }
 
-      console.log("lastMatchesFirstPlayer", lastMatchesFirstPlayer);
-      console.log("lastMatcheSecondPlayer", lastMatchesSecondPlayer);
-
       const matchData = {
+        matchDate: rootData.matchDate,
+        matchWinner: rootData.matchWinner,
+        bothWonSet: rootData.bothWonSet,
         firstPlayer: {
           name: rootData.participants[0],
           odds: rootData.oddsRow[0],
@@ -416,12 +449,13 @@ const main = async () => {
           lastMatches: lastMatchesSecondPlayer,
         },
       };
-      //console.log("match", matchData);
+
       allMatches.push(matchData);
     } catch (error) {
       console.log("error", error);
     }
   }
+
   //  console.log("all matches", allMatches);
   const productionObject = {
     matches: allMatches,
@@ -430,9 +464,9 @@ const main = async () => {
   if (allMatches.length >= 1) {
     //write to file only if there are any results
     const allMatchesJson = JSON.stringify(productionObject);
-    const timestamp = new Date().toISOString().replace(/[-:Z]/g, "");
+    const lastMatchDate = allMatches[allMatches.length - 1].matchDate;
     fs.writeFile(
-      `matches_${timestamp}.json`,
+      `past_matches_${lastMatchDate}.json`,
       allMatchesJson,
       "utf8",
       (err: any) => {

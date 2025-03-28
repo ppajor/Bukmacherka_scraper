@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node dist/index.js",
     "scraper": "ts-node src/scraper.ts",
+    "resultsScraper": "ts-node src/resultsScraper.ts",
     "sets": "ts-node src/setPercentages.ts",
     "build": "tsc"
   },
