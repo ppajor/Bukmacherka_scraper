@@ -1,9 +1,20 @@
 const puppeteer = require("puppeteer-extra");
 const StealthPlugin = require("puppeteer-extra-plugin-stealth");
-import { Browser, Page } from "puppeteer";
+import {
+  Browser,
+  Page,
+  DEFAULT_INTERCEPT_RESOLUTION_PRIORITY,
+} from "puppeteer";
+const AdblockerPlugin = require("puppeteer-extra-plugin-adblocker");
+
 const fs = require("fs");
 
 puppeteer.use(StealthPlugin());
+puppeteer.use(
+  AdblockerPlugin({
+    interceptResolutionPriority: DEFAULT_INTERCEPT_RESOLUTION_PRIORITY,
+  })
+);
 
 const url = "https://www.flashscore.pl/tenis";
 
@@ -35,7 +46,7 @@ const main = async () => {
   });
 
   /* HACK */
-  // await page.click(".calendar__navigation--tomorrow"); //tommorow matches
+  await page.click(".calendar__navigation--tomorrow"); //tommorow matches
   //await page.waitForSelector(".tv-ico", { timeout: 30000 }); //hack - jesli nie ma klasy tv icon w danym dniu a jest w nastepnym
 
   await page.waitForSelector("#onetrust-accept-btn-handler", {
@@ -88,7 +99,14 @@ const main = async () => {
         );
 
         const oddsRowValues = oddsRow.map((odds) => odds?.textContent);
-        if (!oddsRowValues[0] || !oddsRowValues[1] || !fNumber || !sNumber)
+        if (
+          !oddsRowValues[0] ||
+          !oddsRowValues[1] ||
+          !fNumber ||
+          !sNumber ||
+          oddsRowValues[0] === "-" ||
+          oddsRowValues[1] === "-"
+        )
           return null;
 
         return {

@@ -1,10 +1,21 @@
 const puppeteer = require("puppeteer-extra");
 const StealthPlugin = require("puppeteer-extra-plugin-stealth");
-import { Browser, Page } from "puppeteer";
+import {
+  Browser,
+  Page,
+  DEFAULT_INTERCEPT_RESOLUTION_PRIORITY,
+} from "puppeteer";
+const AdblockerPlugin = require("puppeteer-extra-plugin-adblocker");
+
 import { Match, ResultMatch, ResultMatchData } from "./types";
 const fs = require("fs");
 
 puppeteer.use(StealthPlugin());
+puppeteer.use(
+  AdblockerPlugin({
+    interceptResolutionPriority: DEFAULT_INTERCEPT_RESOLUTION_PRIORITY,
+  })
+);
 
 const url = "https://www.flashscore.pl/tenis";
 
@@ -31,18 +42,21 @@ const main = async () => {
   console.log("Browser launched");
   const page = await browser.newPage();
   await page.goto(url);
-  await page.waitForSelector(".calendar__navigation--tomorrow", {
-    timeout: 30000,
-  });
-
-  /* HACK */
-  // await page.click(".calendar__navigation--tomorrow"); //tommorow matches
-  //await page.waitForSelector(".tv-ico", { timeout: 30000 }); //hack - jesli nie ma klasy tv icon w danym dniu a jest w nastepnym
 
   await page.waitForSelector("#onetrust-accept-btn-handler", {
     timeout: 15000,
   });
   await page.click("#onetrust-accept-btn-handler"); // Accept cookies
+
+  await page.waitForSelector(".calendar__navigation--yesterday", {
+    timeout: 30000,
+  });
+  await page.click(".calendar__navigation--yesterday");
+  await page.click(".calendar__navigation--yesterday");
+  await page.click(".calendar__navigation--yesterday");
+  await page.click(".calendar__navigation--yesterday");
+
+  await page.click(".calendar__navigation--yesterday");
 
   await page.waitForSelector(".calendar__navigation--yesterday", {
     timeout: 30000,
@@ -97,10 +111,6 @@ const main = async () => {
           .querySelector(".detailScore__wrapper")
           ?.textContent.replace("-", ":");
 
-        if (!matchScoreString) {
-          return null;
-        }
-
         const resultNumbersArray = matchScoreString.split(":");
         const matchWinner =
           resultNumbersArray[0] > resultNumbersArray[1] ? 1 : 2;
@@ -115,8 +125,17 @@ const main = async () => {
         );
 
         const oddsRowValues = oddsRow.map((odds) => odds?.textContent);
-        if (!oddsRowValues[0] || !oddsRowValues[1] || !fNumber || !sNumber)
+        if (
+          !oddsRowValues[0] ||
+          !oddsRowValues[1] ||
+          !fNumber ||
+          !sNumber ||
+          !matchScoreString ||
+          oddsRowValues[0] === "-" ||
+          oddsRowValues[1] === "-"
+        ) {
           return null;
+        }
 
         return {
           matchDate,
@@ -137,6 +156,7 @@ const main = async () => {
       const h2hUrl = matchUrl.replace("szczegoly-meczu", "h2h/overall");
 
       await page.goto(h2hUrl);
+      await page.waitForSelector(".h2h__row", { timeout: 2500 });
       try {
         await page.waitForSelector(".h2h__row", { timeout: 2500 });
         await page.waitForSelector(".showMore", { timeout: 2500 });
