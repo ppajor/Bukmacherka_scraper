@@ -486,7 +486,7 @@ const main = async () => {
     const allMatchesJson = JSON.stringify(productionObject);
     const lastMatchDate = allMatches[allMatches.length - 1].matchDate;
     fs.writeFile(
-      `past_matches_${lastMatchDate}.json`,
+      `past_matches_results/past_matches_${lastMatchDate}.json`,
       allMatchesJson,
       "utf8",
       (err: any) => {

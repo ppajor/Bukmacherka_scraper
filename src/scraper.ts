@@ -73,7 +73,6 @@ const main = async () => {
   await page.exposeFunction("dateCounter", daysFromDate);
 
   for (const matchUrl of matchesUrls) {
-    //testowo niech wyscapuje 20 pierwszych
     try {
       console.log("match url", matchUrl);
       await page.goto(matchUrl);
@@ -125,6 +124,15 @@ const main = async () => {
       const h2hUrl = matchUrl.replace("szczegoly-meczu", "h2h/overall");
 
       await page.goto(h2hUrl);
+      await page.evaluate(() => {
+        if (!window.location.href.includes("isDetailPopup=true")) {
+          window.history.replaceState(
+            null,
+            "",
+            window.location.href.replace("#", "?isDetailPopup=true#")
+          );
+        }
+      });
       try {
         await page.waitForSelector(".h2h__row", { timeout: 2500 });
         await page.waitForSelector(".showMore", { timeout: 2500 });
