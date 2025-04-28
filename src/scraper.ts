@@ -104,7 +104,8 @@ const main = async () => {
           !fNumber ||
           !sNumber ||
           oddsRowValues[0] === "-" ||
-          oddsRowValues[1] === "-"
+          oddsRowValues[1] === "-" ||
+          (Number(fNumber) > 550 && Number(sNumber) > 550)
         )
           return null;
 
